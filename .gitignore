@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.db
+.env
+deploy/env.*
+test_*.py
+*.egg-info/
+dist/
+build/
+NUL

@@ -1,0 +1,20 @@
+[Unit]
+Description=DigiRails Protocol Indexer
+After=network.target digibyted.service
+Wants=digibyted.service
+
+[Service]
+Type=simple
+User=digirails
+Group=digirails
+WorkingDirectory=/opt/digirails-indexer
+Environment=PYTHONPATH=/opt/digirails-indexer
+EnvironmentFile=/opt/digirails-indexer/.env
+ExecStart=/opt/digirails-indexer/venv/bin/python -m dr_indexer
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
