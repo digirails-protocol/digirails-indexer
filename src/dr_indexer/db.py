@@ -414,6 +414,169 @@ class Database:
 
         return stats
 
+    # --- Recent activity feeds ---
+
+    async def get_recent_declarations(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        include_test: bool = False,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Get all declarations in reverse chronological order (newest first)."""
+        where = "" if include_test else "WHERE is_test = 0"
+        async with self.db.execute(
+            f"SELECT COUNT(*) as cnt FROM declarations {where}"
+        ) as cur:
+            row = await cur.fetchone()
+            total = row["cnt"] if row else 0
+
+        query = f"""
+            SELECT d.*,
+                   id.label as sender_label
+            FROM declarations d
+            LEFT JOIN (
+                SELECT sender_address,
+                       MAX(block_height * 1000000 + tx_index) as max_pos,
+                       label
+                FROM identity_declarations
+                GROUP BY sender_address
+            ) id ON d.sender_address = id.sender_address
+            {where}
+            ORDER BY d.block_height DESC, d.tx_index DESC
+            LIMIT ? OFFSET ?
+        """
+        async with self.db.execute(query, (limit, offset)) as cur:
+            rows = [dict(r) for r in await cur.fetchall()]
+        return rows, total
+
+    async def get_recent_payments(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        include_test: bool = False,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Get all payment memos in reverse chronological order."""
+        where = "" if include_test else "WHERE pm.is_test = 0"
+        where_simple = "" if include_test else "WHERE is_test = 0"
+
+        async with self.db.execute(
+            f"SELECT COUNT(*) as cnt FROM payment_memos {where_simple}"
+        ) as cur:
+            row = await cur.fetchone()
+            total = row["cnt"] if row else 0
+
+        query = f"""
+            SELECT pm.*,
+                   id.label as sender_label
+            FROM payment_memos pm
+            LEFT JOIN (
+                SELECT sender_address,
+                       MAX(block_height * 1000000 + tx_index) as max_pos,
+                       label
+                FROM identity_declarations
+                GROUP BY sender_address
+            ) id ON pm.sender_address = id.sender_address
+            {where}
+            ORDER BY pm.block_height DESC, pm.tx_index DESC
+            LIMIT ? OFFSET ?
+        """
+        async with self.db.execute(query, (limit, offset)) as cur:
+            rows = [dict(r) for r in await cur.fetchall()]
+        return rows, total
+
+    async def get_recent_attestations(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        include_test: bool = False,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Get all attestations in reverse chronological order."""
+        where = "" if include_test else "WHERE a.is_test = 0"
+        where_simple = "" if include_test else "WHERE is_test = 0"
+
+        async with self.db.execute(
+            f"SELECT COUNT(*) as cnt FROM attestations {where_simple}"
+        ) as cur:
+            row = await cur.fetchone()
+            total = row["cnt"] if row else 0
+
+        query = f"""
+            SELECT a.*,
+                   id.label as sender_label
+            FROM attestations a
+            LEFT JOIN (
+                SELECT sender_address,
+                       MAX(block_height * 1000000 + tx_index) as max_pos,
+                       label
+                FROM identity_declarations
+                GROUP BY sender_address
+            ) id ON a.sender_address = id.sender_address
+            {where}
+            ORDER BY a.block_height DESC, a.tx_index DESC
+            LIMIT ? OFFSET ?
+        """
+        async with self.db.execute(query, (limit, offset)) as cur:
+            rows = [dict(r) for r in await cur.fetchall()]
+        return rows, total
+
+    async def get_recent_blocks(
+        self,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Get recent blocks that contain DR protocol transactions.
+
+        Returns block heights with counts of each transaction type.
+        """
+        query = """
+            SELECT block_height, 'declaration' as tx_type, COUNT(*) as cnt, MIN(block_time) as block_time
+            FROM declarations
+            GROUP BY block_height
+            UNION ALL
+            SELECT block_height, 'payment' as tx_type, COUNT(*) as cnt, MIN(block_time) as block_time
+            FROM payment_memos
+            GROUP BY block_height
+            UNION ALL
+            SELECT block_height, 'attestation' as tx_type, COUNT(*) as cnt, MIN(block_time) as block_time
+            FROM attestations
+            GROUP BY block_height
+            UNION ALL
+            SELECT block_height, 'identity' as tx_type, COUNT(*) as cnt, MIN(block_time) as block_time
+            FROM identity_declarations
+            GROUP BY block_height
+            ORDER BY block_height DESC
+        """
+        async with self.db.execute(query) as cur:
+            rows = [dict(r) for r in await cur.fetchall()]
+
+        # Aggregate into per-block summaries
+        blocks: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            h = row["block_height"]
+            if h not in blocks:
+                blocks[h] = {
+                    "block_height": h,
+                    "block_time": row["block_time"],
+                    "declarations": 0,
+                    "payments": 0,
+                    "attestations": 0,
+                    "identities": 0,
+                    "total_txs": 0,
+                }
+            t = row["tx_type"]
+            c = row["cnt"]
+            if t == "declaration":
+                blocks[h]["declarations"] = c
+            elif t == "payment":
+                blocks[h]["payments"] = c
+            elif t == "attestation":
+                blocks[h]["attestations"] = c
+            elif t == "identity":
+                blocks[h]["identities"] = c
+            blocks[h]["total_txs"] += c
+
+        sorted_blocks = sorted(blocks.values(), key=lambda b: b["block_height"], reverse=True)
+        return sorted_blocks[:limit]
+
     # --- Manifest checks ---
 
     async def get_checks_needing_validation(self) -> list[dict[str, Any]]:
@@ -426,7 +589,7 @@ class Database:
             WHERE mc.last_checked_at IS NULL
                OR mc.last_checked_at < ?
             ORDER BY mc.last_checked_at ASC NULLS FIRST""",
-            (int(time.time()) - 3600,),
+            (int(time.time()) - 300,),
         ) as cur:
             return [dict(r) for r in await cur.fetchall()]
 

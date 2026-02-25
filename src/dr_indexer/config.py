@@ -15,7 +15,7 @@ class Config:
     api_host: str = "127.0.0.1"
     api_port: int = 8090
     zmq_url: str = "tcp://127.0.0.1:28332"
-    manifest_check_interval: int = 3600
+    manifest_check_interval: int = 300
     start_block: int = 23_013_000
     seed_manifest_urls: list[str] = field(default_factory=list)
     indexer_url: str = "https://indexer.digirails.org"

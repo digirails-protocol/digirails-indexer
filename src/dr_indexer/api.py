@@ -29,6 +29,10 @@ def create_app(db: Database, config: Config, rpc: RpcClient) -> web.Application:
     app.router.add_get("/v1/services", handle_services)
     app.router.add_get("/v1/agents/{address}", handle_agent)
     app.router.add_get("/v1/status", handle_status)
+    app.router.add_get("/v1/declarations", handle_declarations)
+    app.router.add_get("/v1/payments", handle_payments)
+    app.router.add_get("/v1/attestations", handle_attestations)
+    app.router.add_get("/v1/blocks/recent", handle_recent_blocks)
 
     return app
 
@@ -227,4 +231,136 @@ async def handle_status(request: web.Request) -> web.Response:
             "category", "min_trust", "min_reputation", "currency",
             "verified_only", "include_unrated", "status",
         ],
+    })
+
+
+async def handle_declarations(request: web.Request) -> web.Response:
+    """GET /v1/declarations — Chronological declaration feed."""
+    db: Database = request.app["db"]
+    config: Config = request.app["config"]
+
+    limit = min(int(request.query.get("limit", "50")), 100)
+    offset = int(request.query.get("offset", "0"))
+
+    rows, total = await db.get_recent_declarations(limit=limit, offset=offset)
+
+    results = []
+    for row in rows:
+        cat_code = row["category"]
+        results.append({
+            "txid": row["txid"],
+            "block_height": row["block_height"],
+            "block_time": row["block_time"],
+            "sender_address": row["sender_address"],
+            "sender_label": row.get("sender_label") or "",
+            "category": f"0x{cat_code:04X}",
+            "category_name": SERVICE_CATEGORIES.get(cat_code, "Unknown"),
+            "manifest_hash": row["manifest_hash"],
+            "manifest_domain": row.get("manifest_domain", ""),
+            "is_withdrawal": bool(row["is_withdrawal"]),
+            "is_test": bool(row["is_test"]),
+            "version": row["version"],
+        })
+
+    return web.json_response({
+        "protocol": "drpay",
+        "version": PROTOCOL_VERSION,
+        "type": "declaration_feed",
+        "indexer": config.indexer_url,
+        "total": total,
+        "results": results,
+    })
+
+
+async def handle_payments(request: web.Request) -> web.Response:
+    """GET /v1/payments — Chronological payment memo feed."""
+    db: Database = request.app["db"]
+    config: Config = request.app["config"]
+
+    limit = min(int(request.query.get("limit", "50")), 100)
+    offset = int(request.query.get("offset", "0"))
+
+    rows, total = await db.get_recent_payments(limit=limit, offset=offset)
+
+    results = []
+    for row in rows:
+        results.append({
+            "txid": row["txid"],
+            "block_height": row["block_height"],
+            "block_time": row["block_time"],
+            "sender_address": row["sender_address"],
+            "sender_label": row.get("sender_label") or "",
+            "invoice_id": row.get("invoice_id", ""),
+            "service_ref": row.get("service_ref", ""),
+            "is_test": bool(row["is_test"]),
+            "version": row["version"],
+        })
+
+    return web.json_response({
+        "protocol": "drpay",
+        "version": PROTOCOL_VERSION,
+        "type": "payment_feed",
+        "indexer": config.indexer_url,
+        "total": total,
+        "results": results,
+    })
+
+
+async def handle_attestations(request: web.Request) -> web.Response:
+    """GET /v1/attestations — Chronological attestation feed."""
+    db: Database = request.app["db"]
+    config: Config = request.app["config"]
+
+    limit = min(int(request.query.get("limit", "50")), 100)
+    offset = int(request.query.get("offset", "0"))
+
+    rows, total = await db.get_recent_attestations(limit=limit, offset=offset)
+
+    results = []
+    for row in rows:
+        results.append({
+            "txid": row["txid"],
+            "block_height": row["block_height"],
+            "block_time": row["block_time"],
+            "sender_address": row["sender_address"],
+            "sender_label": row.get("sender_label") or "",
+            "target_address_hash": row["target_address_hash"],
+            "score": row["score"],
+            "nonce": row["nonce"],
+            "is_test": bool(row["is_test"]),
+            "version": row["version"],
+        })
+
+    return web.json_response({
+        "protocol": "drpay",
+        "version": PROTOCOL_VERSION,
+        "type": "attestation_feed",
+        "indexer": config.indexer_url,
+        "total": total,
+        "results": results,
+    })
+
+
+async def handle_recent_blocks(request: web.Request) -> web.Response:
+    """GET /v1/blocks/recent — Recent blocks with DR protocol activity."""
+    db: Database = request.app["db"]
+    config: Config = request.app["config"]
+    rpc: RpcClient = request.app["rpc"]
+
+    limit = min(int(request.query.get("limit", "20")), 50)
+
+    try:
+        chain_height = await rpc.call("getblockcount")
+    except Exception:
+        chain_height = 0
+
+    blocks = await db.get_recent_blocks(limit=limit)
+
+    return web.json_response({
+        "protocol": "drpay",
+        "version": PROTOCOL_VERSION,
+        "type": "block_activity",
+        "indexer": config.indexer_url,
+        "chain_height": chain_height,
+        "blocks": blocks,
     })
