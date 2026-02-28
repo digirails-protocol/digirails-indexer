@@ -356,6 +356,15 @@ async def handle_recent_blocks(request: web.Request) -> web.Response:
 
     blocks = await db.get_recent_blocks(limit=limit)
 
+    # Enrich blocks with hashes from RPC (needed for explorer links)
+    for block in blocks:
+        try:
+            block["block_hash"] = await rpc.call(
+                "getblockhash", [block["block_height"]]
+            )
+        except Exception:
+            block["block_hash"] = None
+
     return web.json_response({
         "protocol": "drpay",
         "version": PROTOCOL_VERSION,
