@@ -5,12 +5,12 @@ Wants=digibyted.service
 
 [Service]
 Type=simple
-User=digirails
-Group=digirails
-WorkingDirectory=/opt/digirails-indexer
-Environment=PYTHONPATH=/opt/digirails-indexer
-EnvironmentFile=/opt/digirails-indexer/.env
-ExecStart=/opt/digirails-indexer/venv/bin/python -m dr_indexer
+User=YOUR_USER
+Group=YOUR_USER
+WorkingDirectory=/path/to/digirails-indexer
+Environment=PYTHONPATH=/path/to/digirails-indexer
+EnvironmentFile=/path/to/digirails-indexer/.env
+ExecStart=/path/to/digirails-indexer/venv/bin/python -m dr_indexer
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
