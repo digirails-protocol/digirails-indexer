@@ -2,7 +2,7 @@
 
 Blockchain indexer for the [DigiRails protocol](https://github.com/digirails-protocol/digirails-spec) — scans DigiByte for DR-Pay on-chain data and serves the Discovery Query Protocol API.
 
-Live at [indexer.digirails.org](https://indexer.digirails.org)
+Public instance at [indexer.digirails.org/v1/status](https://indexer.digirails.org/v1/status)
 
 ## What it does
 
